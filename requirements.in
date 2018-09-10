@@ -10,3 +10,4 @@ tabview
 tqdm
 pip-tools
 twine
+lyft-requests==1.6.0
