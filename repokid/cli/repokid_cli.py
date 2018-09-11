@@ -40,7 +40,6 @@ from datetime import datetime as dt
 import json
 import pprint
 import re
-import requests
 import sys
 import time
 
@@ -60,6 +59,7 @@ from repokid import _get_hooks
 from repokid import __version__ as __version__
 from repokid.role import Role, Roles
 import repokid.hooks
+from repokid.utils.aardvark import aardvark_service, AardvarkRequestException
 from repokid.utils.dynamo import (dynamo_get_or_create_table, find_role_in_cache, get_role_data, role_ids_for_account,
                                   role_ids_for_all_accounts, set_role_data)
 import repokid.utils.roledata as roledata
@@ -217,8 +217,8 @@ def _get_aardvark_data(aardvark_api_location, account_number=None, arn=None):
     while True:
         params = {'count': PAGE_SIZE, 'page': page_num}
         try:
-            r_aardvark = requests.post(aardvark_api_location, params=params, json=payload)
-        except requests.exceptions.RequestException as e:
+            r_aardvark = aardvark_service.post(aardvark_api_location, params=params, json=payload)
+        except AardvarkRequestException as e:
             LOGGER.error('Unable to get Aardvark data: {}'.format(e))
             sys.exit(1)
         else:
