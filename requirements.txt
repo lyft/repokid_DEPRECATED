@@ -22,7 +22,7 @@ docutils==0.14            # via botocore, readme-renderer
 enum34==1.1.6
 flagpole==1.0.1           # via cloudaux
 future==0.16.0            # via readme-renderer
-futures==3.2.0            # via s3transfer
+futures==3.1.1
 html5lib==1.0.1           # via bleach
 idna==2.7
 import-string==0.1.0
