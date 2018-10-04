@@ -21,7 +21,7 @@ class AardvarkService(object):
            The url parameter is intentionally ignored
         """
         try:
-            return aardvark_client.post('api/v1/advisor', data=json, **kwargs)
+            return aardvark_client.post('api/v1/advisors', data=json, **kwargs)
         except BadResponse as e:
             raise AardvarkRequestException(e)
 

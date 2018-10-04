@@ -1,5 +1,6 @@
 import copy
 import datetime
+import os
 import sys
 
 import boto3
@@ -49,21 +50,21 @@ def dynamo_get_or_create_table(**dynamo_config):
     Returns:
         dynamo_table object
     """
-    if 'localhost' in dynamo_config['endpoint']:
+    if os.getenv('SERVICE_INSTANCE') == 'development':
         resource = boto3.resource('dynamodb',
                                   region_name='us-east-1',
-                                  endpoint_url=dynamo_config['endpoint'])
+                                  endpoint_url=os.getenv('DYNAMODB_URL'))
     else:
         resource = boto3_cached_conn(
             'dynamodb',
             service_type='resource',
-            account_number=dynamo_config['account_number'],
+            account_number=os.getenv('ZIMRIDE_ACCOUNT_NUMBER'),
             assume_role=dynamo_config.get('assume_role', None),
             session_name=dynamo_config['session_name'],
             region=dynamo_config['region'])
 
     for table in resource.tables.all():
-        if table.name == 'repokid_roles':
+        if table.name == os.getenv('REPOKID_DYNAMODB_TABLE'):
             return table
 
     table = None
