@@ -23,7 +23,7 @@ Usage:
     repokid rollback_role <account_number> <role_name> [--selection=NUMBER] [-c]
     repokid repo_all_roles <account_number> [-c]
     repokid show_scheduled_roles <account_number>
-    repokid cancel_scheduled_repo <account_number> <role_name>
+    repokid cancel_scheduled_repo <account_number> [--role=ROLE_NAME] [--all]
     repokid repo_scheduled_roles <account_number> [-c]
     repokid repo_stats <output_filename> [--account=ACCOUNT_NUMBER]
 
@@ -44,8 +44,8 @@ import sys
 import time
 
 import botocore
-from cloudaux import CloudAux
-from cloudaux.aws.iam import list_roles, get_role_inline_policies
+from cloudaux.aws.iam import (delete_role_policy, get_account_authorization_details, get_role_inline_policies,
+                              put_role_policy)
 from cloudaux.aws.sts import sts_conn
 from docopt import docopt
 import import_string
@@ -367,13 +367,22 @@ def update_role_cache(account_number, dynamo_table, config, hooks):
     conn = config['connection_iam']
     conn['account_number'] = account_number
 
-    roles = Roles([Role(role_data) for role_data in list_roles(**conn)])
+    LOGGER.info('Getting current role data for account {} (this may take a while for large accounts)'.format(
+        account_number))
+    role_data = get_account_authorization_details(filter='Role', **conn)
+    role_data_by_id = {item['RoleId']: item for item in role_data}
+
+    # convert policies list to dictionary to maintain consistency with old call which returned a dict
+    for _, data in role_data_by_id.items():
+        data['RolePolicyList'] = {item['PolicyName']: item['PolicyDocument'] for item in data['RolePolicyList']}
+
+    roles = Roles([Role(rd) for rd in role_data])
 
     active_roles = []
     LOGGER.info('Updating role data for account {}'.format(account_number))
     for role in tqdm(roles):
         role.account = account_number
-        current_policies = get_role_inline_policies(role.as_dict(), **conn) or {}
+        current_policies = role_data_by_id[role.role_id]['RolePolicyList']
         active_roles.append(role.role_id)
         roledata.update_role_data(dynamo_table, account_number, role, current_policies)
 
@@ -598,7 +607,10 @@ def schedule_repo(account_number, dynamo_table, config, hooks):
     for role in roles:
         if role.repoable_permissions > 0 and not role.repo_scheduled:
             role.repo_scheduled = scheduled_time
-            set_role_data(dynamo_table, role.role_id, {'RepoScheduled': scheduled_time})
+            # freeze the scheduled perms to whatever is repoable right now
+            set_role_data(dynamo_table, role.role_id,
+                          {'RepoScheduled': scheduled_time, 'ScheduledPerms': role.repoable_services})
+
             scheduled_roles.append(role)
 
     LOGGER.info("Scheduled repo for {} days from now for account {} and these roles:\n\t{}".format(
@@ -632,10 +644,27 @@ def show_scheduled_roles(account_number, dynamo_table):
     print tabulate(rows, headers=header)
 
 
-def cancel_scheduled_repo(account_number, role_name, dynamo_table):
+def cancel_scheduled_repo(account_number, dynamo_table, role_name=None, is_all=None):
     """
     Cancel scheduled repo for a role in an account
     """
+    if not is_all and not role_name:
+        LOGGER.error('Either a specific role to cancel or all must be provided')
+        return
+
+    if is_all:
+        roles = Roles([Role(get_role_data(dynamo_table, roleID))
+                      for roleID in role_ids_for_account(dynamo_table, account_number)])
+
+        # filter to show only roles that are scheduled
+        roles = [role for role in roles if (role.repo_scheduled)]
+
+        for role in roles:
+            set_role_data(dynamo_table, role.role_id, {'RepoScheduled': 0, 'ScheduledPerms': []})
+
+        LOGGER.info('Canceled scheduled repo for roles: {}'.format(', '.join([role.role_name for role in roles])))
+        return
+
     role_id = find_role_in_cache(dynamo_table, account_number, role_name)
     if not role_id:
         LOGGER.warn('Could not find role with name {} in account {}'.format(role_name, account_number))
@@ -647,12 +676,12 @@ def cancel_scheduled_repo(account_number, role_name, dynamo_table):
         LOGGER.warn('Repo was not scheduled for role {} in account {}'.format(role.role_name, account_number))
         return
 
-    set_role_data(dynamo_table, role.role_id, {'RepoScheduled': 0})
+    set_role_data(dynamo_table, role.role_id, {'RepoScheduled': 0, 'ScheduledPerms': []})
     LOGGER.info('Successfully cancelled scheduled repo for role {} in account {}'.format(role.role_name,
                 role.account))
 
 
-def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=False):
+def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=False, scheduled=False):
     """
     Calculate what repoing can be done for a role and then actually do it if commit is set
       1) Check that a role exists, it isn't being disqualified by a filter, and that is has fresh AA data
@@ -715,6 +744,10 @@ def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=Fal
                                                               config['filter_config']['AgeFilter']['minimum_age'],
                                                               hooks)
 
+    # if this is a scheduled repo we need to filter out permissions that weren't previously scheduled
+    if scheduled:
+        repoable_permissions = roledata._filter_scheduled_repoable_perms(repoable_permissions, role.scheduled_perms)
+
     repoed_policies, deleted_policy_names = roledata._get_repoed_policy(role.policies[-1]['Policy'],
                                                                         repoable_permissions)
 
@@ -742,12 +775,11 @@ def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=Fal
 
     conn = config['connection_iam']
     conn['account_number'] = account_number
-    ca = CloudAux(**conn)
 
     for name in deleted_policy_names:
         LOGGER.info('Deleting policy with name {} from {} in account {}'.format(name, role.role_name, account_number))
         try:
-            ca.call('iam.client.delete_role_policy', RoleName=role.role_name, PolicyName=name)
+            delete_role_policy(RoleName=role.role_name, PolicyName=name, **conn)
         except botocore.exceptions.ClientError as e:
             error = 'Error deleting policy: {} from role: {} in account {}.  Exception: {}'.format(
                 name,
@@ -765,8 +797,9 @@ def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=Fal
 
         for policy_name, policy in repoed_policies.items():
             try:
-                ca.call('iam.client.put_role_policy', RoleName=role.role_name, PolicyName=policy_name,
-                        PolicyDocument=json.dumps(policy, indent=2, sort_keys=True))
+                put_role_policy(RoleName=role.role_name, PolicyName=policy_name,
+                                PolicyDocument=json.dumps(policy, indent=2, sort_keys=True),
+                                **conn)
 
             except botocore.exceptions.ClientError as e:
                 error = 'Exception calling PutRolePolicy on {role}/{policy} in account {account}\n{e}\n'.format(
@@ -778,7 +811,7 @@ def repo_role(account_number, role_name, dynamo_table, config, hooks, commit=Fal
     roledata.add_new_policy_version(dynamo_table, role, current_policies, 'Repo')
 
     # regardless of whether we're successful we want to unschedule the repo
-    set_role_data(dynamo_table, role.role_id, {'RepoScheduled': 0})
+    set_role_data(dynamo_table, role.role_id, {'RepoScheduled': 0, 'ScheduledPerms': []})
 
     repokid.hooks.call_hooks(hooks, 'AFTER_REPO', {'role': role})
 
@@ -828,10 +861,8 @@ def rollback_role(account_number, role_name, dynamo_table, config, hooks, select
         print tabulate(rows, headers=headers)
         return
 
-    from cloudaux import CloudAux
     conn = config['connection_iam']
     conn['account_number'] = account_number
-    ca = CloudAux(**conn)
 
     current_policies = get_role_inline_policies(role.as_dict(), **conn)
 
@@ -866,8 +897,9 @@ def rollback_role(account_number, role_name, dynamo_table, config, hooks, select
                 role.role_name,
                 account_number))
 
-            ca.call('iam.client.put_role_policy', RoleName=role.role_name, PolicyName=policy_name,
-                    PolicyDocument=json.dumps(policy, indent=2, sort_keys=True))
+            put_role_policy(RoleName=role.role_name, PolicyName=policy_name,
+                            PolicyDocument=json.dumps(policy, indent=2, sort_keys=True),
+                            **conn)
 
         except botocore.exceptions.ClientError as e:
             message = "Unable to push policy {}.  Error: {} (role: {} account {})".format(
@@ -882,13 +914,13 @@ def rollback_role(account_number, role_name, dynamo_table, config, hooks, select
             # remove the policy name if it's in the list
             try:
                 policies_to_remove.remove(policy_name)
-            except Exception:
+            except Exception:  # nosec
                 pass
 
     if policies_to_remove:
         for policy_name in policies_to_remove:
             try:
-                ca.call('iam.client.delete_role_policy', RoleName=role.role_name, PolicyName=policy_name)
+                delete_role_policy(RoleName=role.role_name, PolicyName=policy_name, **conn)
 
             except botocore.excpetions.ClientError as e:
                 message = "Unable to delete policy {}.  Error: {} (role: {} account {})".format(
@@ -932,6 +964,7 @@ def repo_all_roles(account_number, dynamo_table, config, hooks, commit=False, sc
     roles = roles.filter(active=True)
 
     cur_time = int(time.time())
+
     if scheduled:
         roles = [role for role in roles if (role.repo_scheduled and cur_time > role.repo_scheduled)]
 
@@ -940,7 +973,8 @@ def repo_all_roles(account_number, dynamo_table, config, hooks, commit=False, sc
                                                                       ', '.join([role.role_name for role in roles])))
 
     for role in roles:
-        error = repo_role(account_number, role.role_name, dynamo_table, config, hooks, commit=commit)
+        error = repo_role(account_number, role.role_name, dynamo_table, config, hooks, commit=commit,
+                          scheduled=scheduled)
         if error:
             errors.append(error)
 
@@ -1048,9 +1082,13 @@ def main():
         return show_scheduled_roles(account_number, dynamo_table)
 
     if args.get('cancel_scheduled_repo'):
-        role_name = args.get('<role_name>')
-        LOGGER.info('Cancelling scheduled repo for role: {} in account {}'.format(role_name, account_number))
-        return cancel_scheduled_repo(account_number, role_name, dynamo_table)
+        role_name = args.get('--role')
+        is_all = args.get('--all')
+        if not is_all:
+            LOGGER.info('Cancelling scheduled repo for role: {} in account {}'.format(role_name, account_number))
+        else:
+            LOGGER.info('Cancelling scheduled repo for all roles in account {}'.format(account_number))
+        return cancel_scheduled_repo(account_number, dynamo_table, role_name=role_name, is_all=is_all)
 
     if args.get('repo_scheduled_roles'):
         update_role_cache(account_number, dynamo_table, config, hooks)

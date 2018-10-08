@@ -26,7 +26,7 @@ from repokid import LOGGER as LOGGER
 import repokid.hooks
 from repokid.role import Role
 
-IAM_ACCESS_ADVISOR_UNSUPPORTED_SERVICES = frozenset(['lightsail', 'organizations'])
+IAM_ACCESS_ADVISOR_UNSUPPORTED_SERVICES = frozenset(['lightsail', 'organizations', 'tag'])
 IAM_ACCESS_ADVISOR_UNSUPPORTED_ACTIONS = frozenset(['iam:passrole'])
 
 
@@ -114,8 +114,8 @@ def update_no_repo_permissions(dynamo_table, role, newly_added_permissions):
     Returns:
         None
     """
-    current_ignored_permissions = get_role_data(dynamo_table, role.role_id, fields=['NoRepoPermissions']).get(
-                                                'NoRepoPermissions', {})
+    current_ignored_permissions = get_role_data(
+        dynamo_table, role.role_id, fields=['NoRepoPermissions']).get('NoRepoPermissions', {})
     new_ignored_permissions = {}
 
     current_time = int(time.time())
@@ -261,7 +261,7 @@ def _calculate_repo_scores(roles, minimum_age, hooks):
             repoable_permissions = _get_repoable_permissions(role.account, role.role_name, permissions, role.aa_data,
                                                              role.no_repo_permissions, minimum_age, hooks)
             (repoable_permissions_set, repoable_services_set) = _convert_repoable_perms_to_perms_and_services(
-                    permissions, repoable_permissions)
+                permissions, repoable_permissions)
 
             role.repoable_permissions = len(repoable_permissions)
 
@@ -332,6 +332,21 @@ def _convert_repoed_service_to_sorted_perms_and_services(repoed_services):
             repoable_services.add(entry)
 
     return (sorted(repoable_permissions), sorted(repoable_services))
+
+
+def _filter_scheduled_repoable_perms(repoable_permissions, scheduled_perms):
+    """
+    Take a list of current repoable permissions and filter out any that weren't in the list of scheduled permissions
+
+    Args:
+        repoable_permissions (list): List of expanded permissions that are currently believed repoable
+        scheduled_permissions (list): List of scheduled permissions and services (stored in Dynamo at schedule time)
+    Returns:
+        list: New (filtered) repoable permissions
+    """
+    (scheduled_permissions, scheduled_services) = _convert_repoed_service_to_sorted_perms_and_services(scheduled_perms)
+    return([perm for perm in repoable_permissions
+           if(perm in scheduled_permissions or perm.split(':')[0] in scheduled_services)])
 
 
 def _get_repoable_permissions(account_number, role_name, permissions, aa_data, no_repo_permissions, minimum_age,
