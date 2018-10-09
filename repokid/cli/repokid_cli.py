@@ -681,7 +681,6 @@ def cancel_scheduled_repo(account_number, dynamo_table, role_name=None, is_all=N
                 role.account))
 
 
-
 def repo_role(account_number, role_name, config, hooks, commit=False, scheduled=False):
     """
     Calculate what repoing can be done for a role and then actually do it if commit is set
