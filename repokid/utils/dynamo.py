@@ -80,11 +80,14 @@ def dynamo_get_or_create_table():
     try:
         table = resource.create_table(
             TableName='repokid_roles',
-            KeySchema=[{
-                'AttributeName': 'RoleId',
-                'KeyType': 'HASH'  # Partition key
-            }],
-            AttributeDefinitions=[{
+            KeySchema=[
+                {
+                    'AttributeName': 'RoleId',
+                    'KeyType': 'HASH'  # Partition key
+                }
+            ],
+            AttributeDefinitions=[
+                {
                     'AttributeName': 'RoleId',
                     'AttributeType': 'S'
                 },
@@ -95,7 +98,8 @@ def dynamo_get_or_create_table():
                 {
                     'AttributeName': 'Account',
                     'AttributeType': 'S'
-                }],
+                }
+            ],
             ProvisionedThroughput={
                 'ReadCapacityUnits': 50,
                 'WriteCapacityUnits': 50
@@ -125,7 +129,8 @@ def dynamo_get_or_create_table():
                             'KeyType': 'HASH'
                         }
                     ],
-                    'Projection': {
+                    'Projection':
+                    {
                         'ProjectionType': 'KEYS_ONLY',
                     },
                     'ProvisionedThroughput': {
@@ -328,6 +333,9 @@ def _empty_string_to_dynamo_replace(obj):
     elif isinstance(obj, list):
         return [_empty_string_to_dynamo_replace(elem) for elem in obj]
     else:
-        if str(obj) == '':
+        try:
+            if str(obj) == '':
+                obj = DYNAMO_EMPTY_STRING
+        except UnicodeEncodeError:
             obj = DYNAMO_EMPTY_STRING
         return obj

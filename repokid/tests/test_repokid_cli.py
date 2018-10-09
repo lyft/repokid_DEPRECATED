@@ -45,33 +45,51 @@ AARDVARK_DATA = {
 
 ROLE_POLICIES = {
     'all_services_used': {
-            'iam_perms': {
-                'Version': '2012-10-17',
-                'Statement': [
-                    {'Action': ['iam:AddRoleToInstanceProfile', 'iam:AttachRolePolicy'],
-                     'Resource': ['*'],
-                     'Effect': 'Allow'}]},
+        'iam_perms': {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Action': ['iam:AddRoleToInstanceProfile', 'iam:AttachRolePolicy'],
+                    'Resource': ['*'],
+                    'Effect': 'Allow'
+                }
+            ]
+        },
 
-            's3_perms': {
-                'Version': '2012-10-17',
-                'Statement': [
-                    {'Action': ['s3:CreateBucket', 's3:DeleteBucket'],
-                     'Resource': ['*'],
-                     'Effect': 'Allow'}]}},
+        's3_perms': {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Action': ['s3:CreateBucket', 's3:DeleteBucket'],
+                    'Resource': ['*'],
+                    'Effect': 'Allow'
+                }
+            ]
+        }
+    },
     'unused_ec2': {
-            'iam_perms': {
-                'Version': '2012-10-17',
-                'Statement': [
-                    {'Action': ['iam:AddRoleToInstanceProfile', 'iam:AttachRolePolicy'],
-                     'Resource': ['*'],
-                     'Effect': 'Allow'}]},
+        'iam_perms': {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Action': ['iam:AddRoleToInstanceProfile', 'iam:AttachRolePolicy'],
+                    'Resource': ['*'],
+                    'Effect': 'Allow'
+                }
+            ]
+        },
 
-            'ec2_perms': {
-                'Version': '2012-10-17',
-                'Statement': [
-                    {'Action': ['ec2:AllocateHosts', 'ec2:AssociateAddress'],
-                     'Resource': ['*'],
-                     'Effect': 'Allow'}]}}
+        'ec2_perms': {
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Action': ['ec2:AllocateHosts', 'ec2:AssociateAddress'],
+                    'Resource': ['*'],
+                    'Effect': 'Allow'
+                }
+            ]
+        }
+    }
 }
 
 ROLES = [
@@ -144,24 +162,26 @@ class TestRepokidCLI(object):
     @patch('repokid.utils.roledata._calculate_repo_scores')
     @patch('repokid.cli.repokid_cli.set_role_data')
     @patch('repokid.cli.repokid_cli._get_aardvark_data')
-    @patch('repokid.cli.repokid_cli.get_role_inline_policies')
-    @patch('repokid.cli.repokid_cli.list_roles')
-    def test_repokid_update_role_cache(self, mock_list_roles, mock_get_role_inline_policies,
-                                       mock_get_aardvark_data, mock_set_role_data, mock_calculate_repo_scores,
-                                       mock_update_role_data, mock_find_and_mark_inactive, mock_update_stats):
+    @patch('repokid.cli.repokid_cli.get_account_authorization_details')
+    def test_repokid_update_role_cache(self, mock_get_account_authorization_details, mock_get_aardvark_data,
+                                       mock_set_role_data, mock_calculate_repo_scores, mock_update_role_data,
+                                       mock_find_and_mark_inactive, mock_update_stats):
 
         hooks = {}
-        # only active roles
-        mock_list_roles.return_value = ROLES[:3]
 
-        mock_get_role_inline_policies.side_effect = [ROLE_POLICIES['all_services_used'],
-                                                     ROLE_POLICIES['unused_ec2'],
-                                                     ROLE_POLICIES['all_services_used']]
+        role_data = ROLES[:3]
+        role_data[0]['RolePolicyList'] = [{'PolicyName': 'all_services_used',
+                                           'PolicyDocument': ROLE_POLICIES['all_services_used']}]
+        role_data[1]['RolePolicyList'] = [{'PolicyName': 'unused_ec2',
+                                           'PolicyDocument': ROLE_POLICIES['unused_ec2']}]
+        role_data[2]['RolePolicyList'] = [{'PolicyName': 'all_services_used',
+                                           'PolicyDocument': ROLE_POLICIES['all_services_used']}]
 
+        mock_get_account_authorization_details.side_effect = [role_data]
         mock_get_aardvark_data.return_value = AARDVARK_DATA
 
         def update_role_data(dynamo_table, account_number, role, current_policies):
-            role.policies = role.policies = [{'Policy': current_policies}]
+            role.policies = [{'Policy': current_policies}]
 
         mock_update_role_data.side_effect = update_role_data
 
@@ -186,9 +206,11 @@ class TestRepokidCLI(object):
 
         # validate update data called for each role
         assert mock_update_role_data.mock_calls == [
-            call(dynamo_table, account_number, Role(ROLES[0]), ROLE_POLICIES['all_services_used']),
-            call(dynamo_table, account_number, Role(ROLES[1]), ROLE_POLICIES['unused_ec2']),
-            call(dynamo_table, account_number, Role(ROLES[2]), ROLE_POLICIES['all_services_used'])]
+            call(dynamo_table, account_number, Role(ROLES[0]), {'all_services_used':
+                                                                ROLE_POLICIES['all_services_used']}),
+            call(dynamo_table, account_number, Role(ROLES[1]), {'unused_ec2': ROLE_POLICIES['unused_ec2']}),
+            call(dynamo_table, account_number, Role(ROLES[2]), {'all_services_used':
+                                                                ROLE_POLICIES['all_services_used']})]
 
         # all roles active
         assert mock_find_and_mark_inactive.mock_calls == [call(dynamo_table, account_number,
@@ -259,7 +281,8 @@ class TestRepokidCLI(object):
 
         repokid.cli.repokid_cli.schedule_repo('1234567890', None, config, hooks)
 
-        assert mock_set_role_data.mock_calls == [call(None, 'AROAABCDEFGHIJKLMNOPB', {'RepoScheduled': 86401})]
+        assert mock_set_role_data.mock_calls == [call(None, 'AROAABCDEFGHIJKLMNOPB',
+                                                 {'RepoScheduled': 86401, 'ScheduledPerms': ['ec2']})]
         assert mock_call_hooks.mock_calls == [call(hooks, 'AFTER_SCHEDULE_REPO',
                                               {'roles': [Role(ROLES_FOR_DISPLAY[1])]})]
 
@@ -283,13 +306,41 @@ class TestRepokidCLI(object):
 
         # repo all roles in the account, should call repo with all roles
         repokid.cli.repokid_cli.repo_all_roles(None, None, None, None, scheduled=False)
-        # repo only scheduled, should only call repo role with role A
+        # repo only scheduled, should only call repo role with role C
         repokid.cli.repokid_cli.repo_all_roles(None, None, None, None, scheduled=True)
 
-        assert mock_repo_role.mock_calls == [call(None, 'ROLE_A', None, None, None, commit=False),
-                                             call(None, 'ROLE_B', None, None, None, commit=False),
-                                             call(None, 'ROLE_C', None, None, None, commit=False),
-                                             call(None, 'ROLE_C', None, None, None, commit=False)]
+        assert mock_repo_role.mock_calls == [call(None, 'ROLE_A', None, None, None, commit=False, scheduled=False),
+                                             call(None, 'ROLE_B', None, None, None, commit=False, scheduled=False),
+                                             call(None, 'ROLE_C', None, None, None, commit=False, scheduled=False),
+                                             call(None, 'ROLE_C', None, None, None, commit=False, scheduled=True)]
+
+    @patch('repokid.cli.repokid_cli.find_role_in_cache')
+    @patch('repokid.cli.repokid_cli.get_role_data')
+    @patch('repokid.cli.repokid_cli.role_ids_for_account')
+    @patch('repokid.cli.repokid_cli.set_role_data')
+    def test_cancel_scheduled_repo(self, mock_set_role_data, mock_role_ids_for_account, mock_get_role_data,
+                                   mock_find_role_in_cache):
+
+        mock_role_ids_for_account.return_value = ['AROAABCDEFGHIJKLMNOPA', 'AROAABCDEFGHIJKLMNOPB']
+        roles = [{'RoleId': 'AROAABCDEFGHIJKLMNOPA', 'Active': True, 'RoleName': 'ROLE_A', 'RepoScheduled': 100},
+                 {'RoleId': 'AROAABCDEFGHIJKLMNOPB', 'Active': True, 'RoleName': 'ROLE_B', 'RepoScheduled': 0},
+                 {'RoleId': 'AROAABCDEFGHIJKLMNOPC', 'Active': True, 'RoleName': 'ROLE_C', 'RepoScheduled': 5}]
+        mock_get_role_data.side_effect = [roles[0], roles[2], roles[0]]
+
+        # first check all
+        repokid.cli.repokid_cli.cancel_scheduled_repo(None, None, role_name=None, is_all=True)
+
+        # ensure all are cancelled
+        mock_find_role_in_cache.return_value = ['AROAABCDEFGHIJKLMNOPA']
+
+        repokid.cli.repokid_cli.cancel_scheduled_repo(None, None, role_name='ROLE_A', is_all=False)
+
+        assert mock_set_role_data.mock_calls == [call(None, 'AROAABCDEFGHIJKLMNOPA',
+                                                      {'RepoScheduled': 0, 'ScheduledPerms': []}),
+                                                 call(None, 'AROAABCDEFGHIJKLMNOPC',
+                                                      {'RepoScheduled': 0, 'ScheduledPerms': []}),
+                                                 call(None, 'AROAABCDEFGHIJKLMNOPA',
+                                                      {'RepoScheduled': 0, 'ScheduledPerms': []})]
 
     def test_generate_default_config(self):
         generated_config = repokid.cli.repokid_cli._generate_default_config()
