@@ -419,8 +419,8 @@ def update_role_cache(account_number, config, hooks):
             role.role_name, account_number, role.repoable_permissions, role.repoable_services
         ))
         set_role_data(role.role_id, {'TotalPermissions': role.total_permissions,
-                                                   'RepoablePermissions': role.repoable_permissions,
-                                                   'RepoableServices': role.repoable_services})
+                                     'RepoablePermissions': role.repoable_permissions,
+                                     'RepoableServices': role.repoable_services})
 
     LOGGER.info('Updating stats in account {}'.format(account_number))
     roledata.update_stats(roles, source='Scan')
