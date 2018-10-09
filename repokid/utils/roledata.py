@@ -40,7 +40,7 @@ class RepoablePermissionDecision(object):
         return('Is repoable: {}, Decider: {}'.format(self.repoable, self.decider))
 
 
-def add_new_policy_version(dynamo_table, role, current_policy, update_source):
+def add_new_policy_version(role, current_policy, update_source):
     """
     Create a new entry in the history of policy versions in Dynamo. The entry contains the source of the new policy:
     (scan, repo, or restore) the current time, and the current policy contents. Updates the role's policies with the
@@ -57,11 +57,11 @@ def add_new_policy_version(dynamo_table, role, current_policy, update_source):
     policy_entry = {'Source': update_source, 'Discovered': datetime.datetime.utcnow().isoformat(),
                     'Policy': current_policy}
 
-    add_to_end_of_list(dynamo_table, role.role_id, 'Policies', policy_entry)
-    role.policies = get_role_data(dynamo_table, role.role_id, fields=['Policies'])['Policies']
+    add_to_end_of_list(role.role_id, 'Policies', policy_entry)
+    role.policies = get_role_data(role.role_id, fields=['Policies'])['Policies']
 
 
-def find_and_mark_inactive(dynamo_table, account_number, active_roles):
+def find_and_mark_inactive(account_number, active_roles):
     """
     Mark roles in the account that aren't currently active inactive. Do this by getting all roles in the account and
     subtracting the active roles, any that are left are inactive and should be marked thusly.
@@ -75,13 +75,13 @@ def find_and_mark_inactive(dynamo_table, account_number, active_roles):
     """
 
     active_roles = set(active_roles)
-    known_roles = set(role_ids_for_account(dynamo_table, account_number))
+    known_roles = set(role_ids_for_account(account_number))
     inactive_roles = known_roles - active_roles
 
     for roleID in inactive_roles:
-        role_dict = get_role_data(dynamo_table, roleID, fields=['Active', 'Arn'])
+        role_dict = get_role_data(roleID, fields=['Active', 'Arn'])
         if role_dict.get('Active'):
-            set_role_data(dynamo_table, roleID, {'Active': False})
+            set_role_data(roleID, {'Active': False})
 
 
 def find_newly_added_permissions(old_policy, new_policy):
@@ -101,7 +101,7 @@ def find_newly_added_permissions(old_policy, new_policy):
     return new_permissions - old_permissions
 
 
-def update_no_repo_permissions(dynamo_table, role, newly_added_permissions):
+def update_no_repo_permissions(role, newly_added_permissions):
     """
     Update Dyanmo entry for newly added permissions. Any that were newly detected get added with an expiration
     date of now plus the config setting for 'repo_requirements': 'exclude_new_permissions_for_days'. Expired entries
@@ -115,7 +115,7 @@ def update_no_repo_permissions(dynamo_table, role, newly_added_permissions):
         None
     """
     current_ignored_permissions = get_role_data(
-        dynamo_table, role.role_id, fields=['NoRepoPermissions']).get('NoRepoPermissions', {})
+        role.role_id, fields=['NoRepoPermissions']).get('NoRepoPermissions', {})
     new_ignored_permissions = {}
 
     current_time = int(time.time())
@@ -131,10 +131,10 @@ def update_no_repo_permissions(dynamo_table, role, newly_added_permissions):
         new_ignored_permissions[permission] = new_perms_expire_time
 
     role.no_repo_permissions = new_ignored_permissions
-    set_role_data(dynamo_table, role.role_id, {'NoRepoPermissions': role.no_repo_permissions})
+    set_role_data(role.role_id, {'NoRepoPermissions': role.no_repo_permissions})
 
 
-def update_opt_out(dynamo_table, role):
+def update_opt_out(role):
     """
     Update opt-out object for a role - remove (set to empty dict) any entries that have expired
     Opt-out objects should have the form {'expire': xxx, 'owner': xxx, 'reason': xxx}
@@ -146,10 +146,10 @@ def update_opt_out(dynamo_table, role):
         None
     """
     if role.opt_out and int(role.opt_out['expire']) < int(time.time()):
-        set_role_data(dynamo_table, role.role_id, {'OptOut': {}})
+        set_role_data(role.role_id, {'OptOut': {}})
 
 
-def update_role_data(dynamo_table, account_number, role, current_policy, source='Scan', add_no_repo=True):
+def update_role_data(account_number, role, current_policy, source='Scan', add_no_repo=True):
     """
     Compare the current version of a policy for a role and what has been previously stored in Dynamo.
       - If current and new policy versions are different store the new version in Dynamo. Add any newly added
@@ -159,7 +159,6 @@ def update_role_data(dynamo_table, account_number, role, current_policy, source=
       - Updates the role with full history of policies, including current version
 
     Args:
-        dynamo_table
         account_number
         role (Role): current role being updated
         current_policy (dict): representation of the current policy version
@@ -170,9 +169,9 @@ def update_role_data(dynamo_table, account_number, role, current_policy, source=
     """
 
     # policy_entry: source, discovered, policy
-    stored_role = get_role_data(dynamo_table, role.role_id, fields=['OptOut', 'Policies'])
+    stored_role = get_role_data(role.role_id, fields=['OptOut', 'Policies'])
     if not stored_role:
-        role_dict = store_initial_role_data(dynamo_table, role.arn, role.create_date, role.role_id, role.role_name,
+        role_dict = store_initial_role_data(role.arn, role.create_date, role.role_id, role.role_name,
                                             account_number, current_policy)
         role.set_attributes(role_dict)
         LOGGER.info('Added new role ({}): {}'.format(role.role_id, role.arn))
@@ -180,7 +179,7 @@ def update_role_data(dynamo_table, account_number, role, current_policy, source=
         # is the policy list the same as the last we had?
         old_policy = stored_role['Policies'][-1]['Policy']
         if current_policy != old_policy:
-            add_new_policy_version(dynamo_table, role, current_policy, source)
+            add_new_policy_version(role, current_policy, source)
             LOGGER.info('{} has different inline policies than last time, adding to role store'.format(role.arn))
 
             newly_added_permissions = find_newly_added_permissions(old_policy, current_policy)
@@ -188,18 +187,18 @@ def update_role_data(dynamo_table, account_number, role, current_policy, source=
             newly_added_permissions = set()
 
         if add_no_repo:
-            update_no_repo_permissions(dynamo_table, role, newly_added_permissions)
-        update_opt_out(dynamo_table, role)
-        set_role_data(dynamo_table, role.role_id, {'Refreshed': datetime.datetime.utcnow().isoformat()})
+            update_no_repo_permissions(role, newly_added_permissions)
+        update_opt_out(role)
+        set_role_data(role.role_id, {'Refreshed': datetime.datetime.utcnow().isoformat()})
 
         # Update all data from Dynamo except CreateDate (it's in the wrong format) and DQ_by (we're going to recalc)
-        current_role_data = get_role_data(dynamo_table, role.role_id)
+        current_role_data = get_role_data(role.role_id)
         current_role_data.pop('CreateDate', None)
         current_role_data.pop('DisqualifiedBy', None)
         role.set_attributes(current_role_data)
 
 
-def update_stats(dynamo_table, roles, source='Scan'):
+def update_stats(roles, source='Scan'):
     """
     Create a new stats entry for each role in a set of roles and add it to Dynamo
 
@@ -223,7 +222,7 @@ def update_stats(dynamo_table, roles, source='Scan'):
 
         for item in ['DisqualifiedBy', 'PermissionsCount', 'RepoablePermissionsCount']:
             if new_stats.get(item) != cur_stats.get(item):
-                add_to_end_of_list(dynamo_table, role.role_id, 'Stats', new_stats)
+                add_to_end_of_list(role.role_id, 'Stats', new_stats)
 
 
 def _calculate_repo_scores(roles, minimum_age, hooks):
