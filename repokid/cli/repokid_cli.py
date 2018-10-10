@@ -222,16 +222,12 @@ def _get_aardvark_data(aardvark_api_location, account_number=None, arn=None):
             LOGGER.error('Unable to get Aardvark data: {}'.format(e))
             sys.exit(1)
         else:
-            if(r_aardvark.status_code != 200):
-                LOGGER.error('Unable to get Aardvark data')
-                sys.exit(1)
-
-            response_data.update(r_aardvark.json())
+            response_data.update(r_aardvark)
             # don't want these in our Aardvark data
             response_data.pop('count')
             response_data.pop('page')
             response_data.pop('total')
-            if PAGE_SIZE * page_num < r_aardvark.json().get('total'):
+            if PAGE_SIZE * page_num < r_aardvark.get('total'):
                 page_num += 1
             else:
                 break
