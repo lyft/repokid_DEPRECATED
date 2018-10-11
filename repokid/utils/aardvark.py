@@ -16,12 +16,13 @@ class AardvarkRequestException(Exception):
 
 
 class AardvarkService(object):
-    def post(url, data=None, json=None, **kwargs):
+    def post(self, url, params=None, json=None):
         """Wrapper over EnvoyClient to send a post request
            The url parameter is intentionally ignored
         """
+        json.update(params)
         try:
-            return aardvark_client.post('api/v1/advisors', data=json, **kwargs)
+            return aardvark_client.post('api/v1/advisors', data=json)
         except BadResponse as e:
             raise AardvarkRequestException(e)
 
