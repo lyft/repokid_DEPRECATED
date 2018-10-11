@@ -216,6 +216,7 @@ def _get_aardvark_data(aardvark_api_location, account_number=None, arn=None):
         return
     while True:
         params = {'count': PAGE_SIZE, 'page': page_num}
+        LOGGER.info('Requested page {} from aardvark service'.format(page_num))
         try:
             r_aardvark = aardvark_service.post(aardvark_api_location, params=params, json=payload)
         except AardvarkRequestException as e:

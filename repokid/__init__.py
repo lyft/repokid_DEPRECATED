@@ -19,7 +19,7 @@ import os
 
 import import_string
 
-__version__ = '0.9.0.post4'
+__version__ = '0.9.0.post5'
 
 
 def init_config():
