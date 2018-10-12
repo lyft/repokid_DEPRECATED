@@ -750,6 +750,17 @@ def repo_role(account_number, role_name, config, hooks, commit=False, scheduled=
 
     policies_length = len(json.dumps(repoed_policies))
 
+    for name in deleted_policy_names:
+        LOGGER.info('Would delete policy from {} with name {} in account {}'.format(
+            role_name,
+            name,
+            account_number))
+    if repoed_policies:
+        LOGGER.info('Would replace policies for role {} with: \n{} in account {}'.format(
+            role_name,
+            json.dumps(repoed_policies, indent=2, sort_keys=True),
+            account_number))
+
     if policies_length > MAX_AWS_POLICY_SIZE:
         error = ("Policies would exceed the AWS size limit after repo for role: {} in account {}.  "
                  "Please manually minify.".format(role_name, account_number))
@@ -758,16 +769,7 @@ def repo_role(account_number, role_name, config, hooks, commit=False, scheduled=
         return
 
     if not commit:
-        for name in deleted_policy_names:
-            LOGGER.info('Would delete policy from {} with name {} in account {}'.format(
-                role_name,
-                name,
-                account_number))
-        if repoed_policies:
-            LOGGER.info('Would replace policies for role {} with: \n{} in account {}'.format(
-                role_name,
-                json.dumps(repoed_policies, indent=2, sort_keys=True),
-                account_number))
+        LOGGER.info('Commit flag not set! Now exiting')
         return
 
     conn = config['connection_iam']
