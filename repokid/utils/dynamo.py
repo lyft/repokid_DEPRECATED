@@ -7,7 +7,6 @@ import boto3
 from botocore.exceptions import ClientError as BotoClientError
 from cloudaux.aws.sts import boto3_cached_conn as boto3_cached_conn
 
-from repokid import CONFIG
 from repokid import LOGGER as LOGGER
 
 # used as a placeholder for empty SID to work around this: https://github.com/aws/aws-sdk-js/issues/833
@@ -25,8 +24,7 @@ def catch_boto_error(func):
 
 
 @catch_boto_error
-def add_to_end_of_list(role_id, field_name, object_to_add):
-    dynamo_table = dynamo_get_or_create_table()
+def add_to_end_of_list(dynamo_table, role_id, field_name, object_to_add):
     dynamo_table.update_item(Key={'RoleId': role_id},
                              UpdateExpression=("SET #updatelist = list_append(if_not_exists(#updatelist,"
                                                ":empty_list), :object_to_add)"),
@@ -36,7 +34,7 @@ def add_to_end_of_list(role_id, field_name, object_to_add):
                                                             object_to_add)]})
 
 
-def dynamo_get_or_create_table():
+def dynamo_get_or_create_table(**dynamo_config):
     """
     Create a new table or get a reference to an existing Dynamo table named 'repokid_roles' that will store data all
     data for Repokid.  Return a table with a reference to the dynamo resource
@@ -52,13 +50,6 @@ def dynamo_get_or_create_table():
     Returns:
         dynamo_table object
     """
-
-    if not CONFIG:
-        config = _generate_default_config()
-    else:
-        config = CONFIG
-
-    dynamo_config = config['dynamo_db']
     if os.getenv('SERVICE_INSTANCE') == 'development':
         resource = boto3.resource('dynamodb',
                                   region_name='us-east-1',
@@ -144,7 +135,7 @@ def dynamo_get_or_create_table():
     return table
 
 
-def find_role_in_cache(account_number, role_name):
+def find_role_in_cache(dynamo_table, account_number, role_name):
     """Return role dictionary for active role with name in account
 
     Args:
@@ -154,7 +145,6 @@ def find_role_in_cache(account_number, role_name):
     Returns:
         string: RoleID for active role with name in given account, else None
     """
-    dynamo_table = dynamo_get_or_create_table()
     results = dynamo_table.query(IndexName='RoleName',
                                  KeyConditionExpression='RoleName = :rn',
                                  ExpressionAttributeValues={':rn': role_name})
@@ -162,7 +152,7 @@ def find_role_in_cache(account_number, role_name):
 
     if len(role_id_candidates) > 1:
         for role_id in role_id_candidates:
-            role_data = get_role_data(role_id, fields=['Account', 'Active'])
+            role_data = get_role_data(dynamo_table, role_id, fields=['Account', 'Active'])
             if role_data['Account'] == account_number and role_data['Active']:
                 return role_id
     elif len(role_id_candidates) == 1:
@@ -172,7 +162,7 @@ def find_role_in_cache(account_number, role_name):
 
 
 @catch_boto_error
-def get_role_data(roleID, fields=None):
+def get_role_data(dynamo_table, roleID, fields=None):
     """
     Get role data as a dictionary for a given role by ID
 
@@ -182,7 +172,6 @@ def get_role_data(roleID, fields=None):
     Returns:
         dict: data for the role if it exists, else None
     """
-    dynamo_table = dynamo_get_or_create_table()
     if fields:
         response = dynamo_table.get_item(Key={'RoleId': roleID}, AttributesToGet=fields)
     else:
@@ -193,7 +182,7 @@ def get_role_data(roleID, fields=None):
 
 
 @catch_boto_error
-def role_ids_for_account(account_number):
+def role_ids_for_account(dynamo_table, account_number):
     """
     Get a list of all role IDs in a given account by querying the Dynamo secondary index 'account'
 
@@ -203,7 +192,6 @@ def role_ids_for_account(account_number):
     Returns:
         list: role ids in given account
     """
-    dynamo_table = dynamo_get_or_create_table()
     role_ids = set()
 
     results = dynamo_table.query(IndexName='Account',
@@ -221,7 +209,7 @@ def role_ids_for_account(account_number):
 
 
 @catch_boto_error
-def role_ids_for_all_accounts():
+def role_ids_for_all_accounts(dynamo_table):
     """
     Get a list of all role IDs for all accounts by scanning the Dynamo table
 
@@ -231,7 +219,6 @@ def role_ids_for_all_accounts():
     Returns:
         list: role ids in all accounts
     """
-    dynamo_table = dynamo_get_or_create_table()
     role_ids = []
 
     response = dynamo_table.scan(ProjectionExpression='RoleId')
@@ -245,8 +232,7 @@ def role_ids_for_all_accounts():
 
 
 @catch_boto_error
-def set_role_data(role_id, update_keys):
-    dynamo_table = dynamo_get_or_create_table()
+def set_role_data(dynamo_table, role_id, update_keys):
     if not update_keys:
         return
 
@@ -272,7 +258,7 @@ def set_role_data(role_id, update_keys):
                              ExpressionAttributeValues=expression_attribute_values)
 
 
-def store_initial_role_data(arn, create_date, role_id, role_name, account_number, current_policy):
+def store_initial_role_data(dynamo_table, arn, create_date, role_id, role_name, account_number, current_policy):
     """
     Store the initial version of a role in Dynamo
 
@@ -283,7 +269,6 @@ def store_initial_role_data(arn, create_date, role_id, role_name, account_number
     Returns:
         None
     """
-    dynamo_table = dynamo_get_or_create_table()
     policy_entry = {'Source': 'Scan', 'Discovered': datetime.datetime.utcnow().isoformat(), 'Policy': current_policy}
 
     role_dict = {'Arn': arn, 'CreateDate': create_date.isoformat(), 'RoleId': role_id, 'RoleName': role_name,
