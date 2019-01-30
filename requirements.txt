@@ -5,59 +5,57 @@
 #    control run piptools.compile repokid
 #
 asn1crypto==0.24.0
-bleach==3.0.0             # via readme-renderer
-boto3==1.9.18
+bleach==3.1.0             # via readme-renderer
+boto3==1.9.86
 boto==2.49.0              # via cloudaux
-botocore==1.12.18         # via boto3, cloudaux, s3transfer
+botocore==1.12.86         # via boto3, cloudaux, s3transfer
 certifi==2018.1.18
 cffi==1.11.5
 chardet==3.0.4            # via requests
 click==7.0                # via pip-tools
-cloudaux==1.5.5
-cmarkgfm==0.4.2           # via readme-renderer
-cryptography==2.3.1
+cloudaux==1.5.8
+cryptography==2.5
 defusedxml==0.5.0         # via cloudaux
 docopt==0.6.2
 docutils==0.14            # via botocore, readme-renderer
 enum34==1.1.6
 flagpole==1.0.1           # via cloudaux
-future==0.16.0            # via readme-renderer
 futures==3.1.1
-idna==2.7
+idna==2.8
 import-string==0.1.0
 inflection==0.3.1         # via cloudaux
 ipaddress==1.0.22
 jmespath==0.9.3           # via boto3, botocore
-joblib==0.12.5            # via cloudaux
+joblib==0.13.1            # via cloudaux
 lyft-exceptions==0.1.2    # via lyft-logging, lyft-requests
-lyft-logging==0.7.0       # via lyft-requests
+lyft-logging==0.7.4       # via lyft-requests
 lyft-requests==1.6.0
-lyft-settings==0.2.2      # via lyft-requests
-lyft-stats==0.7.5         # via lyft-requests
-marshmallow==2.15.6
+lyft-settings==0.3.0      # via lyft-requests
+lyft-stats==0.7.6         # via lyft-requests
+marshmallow==2.18.0
 ndg-httpsclient==0.5.1
-pip-tools==3.1.0
-pkginfo==1.4.2            # via twine
-policyuniverse==1.1.0.1
+pip-tools==3.3.2
+pkginfo==1.5.0.1          # via twine
+policyuniverse==1.2.0.1
 protobuf==3.5.2.post1     # via lyft-requests
-pyasn1==0.4.4
+pyasn1==0.4.5
 pycparser==2.19
-pygments==2.2.0           # via readme-renderer
-pyopenssl==18.0.0
-python-dateutil==2.7.3    # via botocore
-readme-renderer==22.0     # via twine
-requests-toolbelt==0.8.0  # via twine
-requests==2.19.1
+pygments==2.3.1           # via readme-renderer
+pyopenssl==19.0.0
+python-dateutil==2.7.5    # via botocore
+readme-renderer==24.0     # via twine
+requests-toolbelt==0.9.1  # via twine
+requests==2.21.0
 s3transfer==0.1.13        # via boto3
-six==1.11.0
+six==1.12.0
 statsd==3.2.2             # via lyft-stats
-tabulate==0.8.2
+tabulate==0.8.3
 tabview==1.4.3
-tqdm==4.26.0
+tqdm==4.30.0
 twine==1.12.1
 typing==3.6.6             # via lyft-logging, lyft-requests, lyft-stats
-urllib3==1.23             # via botocore, requests
+urllib3==1.24.1           # via botocore, requests
 webencodings==0.5.1       # via bleach
 
 pip==9.0.3
-setuptools==40.4.3
+setuptools==40.7.1
