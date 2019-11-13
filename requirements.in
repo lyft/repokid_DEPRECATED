@@ -1,3 +1,4 @@
+# piptools: python3only
 boto3
 cloudaux
 docopt
