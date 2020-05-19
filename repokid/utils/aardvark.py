@@ -4,10 +4,12 @@ from lyft_requests.response import BadResponse
 from lyft.settings import str_env
 
 
-aardvark_client = EnvoyClient(service='aardvark',
-                              auth_type=EnvoyClient.AUTH_TYPE_BASIC,
-                              user=str_env('AARDVARK_USER'),
-                              key=str_env('AARDVARK_API_KEY'))
+aardvark_client = EnvoyClient(
+    service="aardvark",
+    auth_type=EnvoyClient.AUTH_TYPE_BASIC,
+    user=str_env("AARDVARK_USER"),
+    key=str_env("AARDVARK_API_KEY"),
+)
 
 
 class AardvarkRequestException(Exception):
@@ -22,7 +24,7 @@ class AardvarkService(object):
         """
         json.update(params)
         try:
-            return aardvark_client.post('api/v1/advisors', data=json)
+            return aardvark_client.post("api/v1/advisors", data=json)
         except BadResponse as e:
             raise AardvarkRequestException(e)
 
@@ -30,5 +32,6 @@ class AardvarkService(object):
 @memoize
 def get_aardvark_service():
     return AardvarkService()
+
 
 aardvark_service = get_aardvark_service()
