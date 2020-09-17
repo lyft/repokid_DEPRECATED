@@ -2,6 +2,7 @@ name: repokid
 description: AWS Least Privilege for Distributed, High-Velocity Deployment.
 repository: git@github.com:lyft/repokid.git
 image_type: library
+disabled: true
 languages:
   - python
 builder:
