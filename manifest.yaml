@@ -1,4 +1,5 @@
 name: repokid
+disabled: true
 description: AWS Least Privilege for Distributed, High-Velocity Deployment.
 repository: git@github.com:lyft/repokid.git
 image_type: library
@@ -17,12 +18,12 @@ tests:
     command: python3 -m pytest repokid/tests
 deploy:
   - name: staging
-    legacy: true
+    legacy: false
     role: lyftpypi-staging-iad-deploy
     orca: []
     environment: staging
   - name: production
-    legacy: true
+    legacy: false
     role: lyftpypi-production-iad-deploy
     automatic: true
     orca: []
