@@ -426,7 +426,7 @@ def update_role_cache(account_number, dynamo_table, config, hooks):
     # Blocklist needs to know the current account
     filter_config = config["filter_config"]
     blocklist_filter_config = filter_config.get(
-        "BlocklistFilter", filter_config.get("BlacklistFilter")
+        "BlocklistFilter", filter_config.get("DenylistFilter")
     )
     blocklist_filter_config["current_account"] = account_number
 

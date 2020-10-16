@@ -44,7 +44,7 @@ class BlocklistFilter(Filter):
     def __init__(self, config=None):
         blocklist_json = None
         bucket_config = config.get(
-            "blocklist_bucket", config.get("blacklist_bucket", None)
+            "blocklist_bucket", config.get("denylist_bucket", None)
         )
         if bucket_config:
             blocklist_json = get_blocklist_from_bucket(bucket_config)
